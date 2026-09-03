@@ -38,3 +38,30 @@ class Report(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class Comment(models.Model):
+    report = models.ForeignKey(Report, on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'Comment by {self.author} on {self.report}'
+
+
+class ActivityLog(models.Model):
+    report = models.ForeignKey(Report, on_delete=models.CASCADE, related_name='activity_logs')
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    action = models.CharField(max_length=100)
+    detail = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'{self.action} on {self.report} by {self.actor}'

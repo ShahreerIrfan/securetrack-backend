@@ -8,8 +8,13 @@ from rest_framework.response import Response
 
 from common.permissions import IsOwnerOrAdmin
 
-from .models import Report
-from .serializers import ReportSerializer, ReportWriteSerializer
+from .models import ActivityLog, Report
+from .serializers import (
+    ActivityLogSerializer,
+    CommentSerializer,
+    ReportSerializer,
+    ReportWriteSerializer,
+)
 
 
 class ReportViewSet(viewsets.ModelViewSet):
@@ -64,6 +69,9 @@ class ReportViewSet(viewsets.ModelViewSet):
                 {'detail': f'"{new_status}" is not a valid status.'}, status=400,
             )
 
+        old_status = report.status
+        assignment_detail = ''
+
         if user.role == 'analyst':
             if new_status not in (Report.Status.IN_REVIEW, Report.Status.VERIFIED):
                 return Response(
@@ -80,11 +88,13 @@ class ReportViewSet(viewsets.ModelViewSet):
                         status=400,
                     )
                 try:
-                    report.assigned_to = CustomUser.objects.get(pk=assignee_id)
+                    assignee = CustomUser.objects.get(pk=assignee_id)
                 except CustomUser.DoesNotExist:
                     return Response(
                         {'detail': f'No user with id "{assignee_id}" exists.'}, status=400,
                     )
+                report.assigned_to = assignee
+                assignment_detail = f' and assigned to {assignee.username}'
             # admins may set any other valid status without restriction
 
         elif user.role == 'developer':
@@ -105,4 +115,29 @@ class ReportViewSet(viewsets.ModelViewSet):
 
         report.status = new_status
         report.save()
+
+        ActivityLog.objects.create(
+            report=report,
+            actor=user,
+            action='status_changed',
+            detail=f'Status changed from "{old_status}" to "{new_status}"{assignment_detail}',
+        )
+
         return Response(ReportSerializer(report).data)
+
+    @action(detail=True, methods=['get', 'post'], url_path='comments')
+    def comments(self, request, pk=None):
+        report = self.get_object()
+
+        if request.method == 'POST':
+            serializer = CommentSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            comment = serializer.save(report=report, author=request.user)
+            return Response(CommentSerializer(comment).data, status=201)
+
+        return Response(CommentSerializer(report.comments.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='activity')
+    def activity(self, request, pk=None):
+        report = self.get_object()
+        return Response(ActivityLogSerializer(report.activity_logs.all(), many=True).data)
