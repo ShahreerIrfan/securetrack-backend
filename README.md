@@ -30,3 +30,41 @@ python manage.py runserver
 
 API runs at `http://localhost:8000/`. CORS is configured to allow requests
 from `http://localhost:3000` (the frontend dev server).
+
+The superuser created above starts with `role="user"` (Django's
+`createsuperuser` has no notion of this app's roles). Promote it to admin
+so it can reach the admin-only endpoints and the frontend's User
+Management page:
+
+```bash
+python manage.py shell -c "
+from accounts.models import CustomUser
+u = CustomUser.objects.get(username='<your-superuser-username>')
+u.role = 'admin'
+u.save()
+"
+```
+
+## Environment variables
+
+None are required for local development. `SECRET_KEY`, `DEBUG`, and CORS
+origins are all hardcoded in `config/settings.py` for local SQLite dev.
+Deploying anywhere beyond localhost means moving at least these out of
+source and into real environment variables first:
+
+| Setting | Currently | Needs to become |
+|---|---|---|
+| `SECRET_KEY` | hardcoded dev value | a real secret from the environment |
+| `DEBUG` | `True` | `False` in production |
+| `ALLOWED_HOSTS` | `['localhost', '127.0.0.1']` | your actual domain(s) |
+| `CORS_ALLOWED_ORIGINS` | `['http://localhost:3000']` | your deployed frontend's origin |
+| `DATABASES` | SQLite file | a real database (e.g. Postgres via `DATABASE_URL`) |
+
+## API surface
+
+- `/api/auth/` — register, login, refresh, me, admin-only user management
+- `/api/reports/` — CRUD, status transitions, comments, activity log
+- `/api/dashboard/` — role-aware stats and recent-reports endpoints
+
+See `accounts/TESTING.md` and `reports/TESTING.md` for manually-verified
+checklists covering auth and the full report lifecycle.
