@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from common.permissions import IsOwnerOrAdmin
 
 from .models import ActivityLog, Report
+from .queries import visible_reports
 from .serializers import (
     ActivityLogSerializer,
     CommentSerializer,
@@ -34,14 +35,7 @@ class ReportViewSet(viewsets.ModelViewSet):
         return ReportWriteSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        qs = Report.objects.all().order_by('-created_at')
-        if user.role == 'user':
-            return qs.filter(created_by=user)
-        if user.role == 'developer':
-            return qs.filter(assigned_to=user)
-        # analyst / admin see everything
-        return qs
+        return visible_reports(self.request.user)
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
