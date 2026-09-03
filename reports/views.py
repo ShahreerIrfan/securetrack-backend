@@ -88,7 +88,7 @@ class ReportViewSet(viewsets.ModelViewSet):
                         {'detail': f'No user with id "{assignee_id}" exists.'}, status=400,
                     )
                 report.assigned_to = assignee
-                assignment_detail = f' and assigned to {assignee.username}'
+                assignment_detail = f' and assigned to {assignee.first_name} {assignee.last_name}'
             # admins may set any other valid status without restriction
 
         elif user.role == 'developer':

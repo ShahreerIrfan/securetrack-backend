@@ -8,7 +8,7 @@ from .models import ActivityLog, Comment, Report
 class NestedUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ('id', 'username', 'role')
+        fields = ('id', 'email', 'first_name', 'last_name', 'role')
         read_only_fields = fields
 
 
