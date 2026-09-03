@@ -1,7 +1,10 @@
-from rest_framework import status
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import status, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from common.permissions import IsAdmin
 
 from .models import CustomUser
 from .serializers import UserCreateSerializer, UserSerializer
@@ -18,3 +21,18 @@ class RegisterView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save(role=CustomUser.Role.USER)
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    """Admin-only user management. Unlike RegisterView, allows setting any
+    role directly."""
+
+    queryset = CustomUser.objects.all().order_by('id')
+    permission_classes = (IsAdmin,)
+    filter_backends = (DjangoFilterBackend,)
+    filterset_fields = ('role',)
+
+    def get_serializer_class(self):
+        if self.action in ('list', 'retrieve'):
+            return UserSerializer
+        return UserCreateSerializer
