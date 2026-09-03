@@ -58,6 +58,8 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
 ]
 
+AUTH_USER_MODEL = 'core.CustomUser'
+
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
