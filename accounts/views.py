@@ -1,6 +1,6 @@
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status, viewsets
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -36,3 +36,18 @@ class UserViewSet(viewsets.ModelViewSet):
         if self.action in ('list', 'retrieve'):
             return UserSerializer
         return UserCreateSerializer
+
+
+class MeView(APIView):
+    """Returns the authenticated user's identity, resolved from their JWT."""
+
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        user = request.user
+        return Response({
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'role': user.role,
+        })
