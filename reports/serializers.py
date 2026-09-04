@@ -17,8 +17,14 @@ class CommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = ('id', 'report', 'author', 'content', 'created_at')
-        read_only_fields = ('id', 'report', 'author', 'created_at')
+        fields = ('id', 'report', 'author', 'content', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'report', 'author', 'created_at', 'updated_at')
+
+
+class CommentUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Comment
+        fields = ('content',)
 
 
 class ActivityLogSerializer(serializers.ModelSerializer):
@@ -38,18 +44,30 @@ class ReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
         fields = (
-            'id', 'title', 'description', 'severity', 'status',
-            'created_by', 'assigned_to', 'comments', 'created_at', 'updated_at',
+            'id', 'title', 'description', 'severity', 'status', 'priority',
+            'category', 'due_date', 'created_by', 'assigned_to', 'comments',
+            'created_at', 'updated_at',
         )
         read_only_fields = ('id', 'created_by', 'created_at', 'updated_at')
 
 
-class ReportWriteSerializer(serializers.ModelSerializer):
-    assigned_to = serializers.PrimaryKeyRelatedField(
-        queryset=CustomUser.objects.all(), required=False, allow_null=True,
-    )
-
+# Deliberately exclude "status" and "assigned_to" from both write
+# serializers below. Those two fields only ever move through the
+# role-gated set_status action - letting them through here would let any
+# authenticated user PATCH them directly and bypass that logic entirely.
+class ReportCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
-        fields = ('id', 'title', 'description', 'severity', 'status', 'assigned_to')
+        fields = (
+            'id', 'title', 'description', 'severity', 'priority', 'category', 'due_date',
+        )
+        read_only_fields = ('id',)
+
+
+class ReportUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Report
+        fields = (
+            'id', 'title', 'description', 'severity', 'priority', 'category', 'due_date',
+        )
         read_only_fields = ('id',)

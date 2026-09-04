@@ -17,10 +17,26 @@ class Report(models.Model):
         RESOLVED = 'resolved', 'Resolved'
         CLOSED = 'closed', 'Closed'
 
+    class Priority(models.TextChoices):
+        LOW = 'low', 'Low'
+        MEDIUM = 'medium', 'Medium'
+        HIGH = 'high', 'High'
+        URGENT = 'urgent', 'Urgent'
+
+    class Category(models.TextChoices):
+        WEB_APPLICATION = 'web_application', 'Web Application'
+        NETWORK = 'network', 'Network'
+        PHYSICAL_SECURITY = 'physical_security', 'Physical Security'
+        SOCIAL_ENGINEERING = 'social_engineering', 'Social Engineering'
+        OTHER = 'other', 'Other'
+
     title = models.CharField(max_length=255)
     description = models.TextField()
     severity = models.CharField(max_length=20, choices=Severity.choices, default=Severity.MEDIUM)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
+    priority = models.CharField(max_length=20, choices=Priority.choices, default=Priority.MEDIUM)
+    category = models.CharField(max_length=30, choices=Category.choices, default=Category.OTHER)
+    due_date = models.DateField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -45,6 +61,7 @@ class Comment(models.Model):
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['created_at']

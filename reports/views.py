@@ -1,4 +1,5 @@
 from accounts.models import CustomUser
+from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
@@ -6,15 +7,17 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from common.permissions import IsOwnerOrAdmin
+from common.permissions import CanEditReport, IsOwnerOrAdmin
 
-from .models import ActivityLog, Report
+from .models import ActivityLog, Comment, Report
 from .queries import visible_reports
 from .serializers import (
     ActivityLogSerializer,
     CommentSerializer,
+    CommentUpdateSerializer,
+    ReportCreateSerializer,
     ReportSerializer,
-    ReportWriteSerializer,
+    ReportUpdateSerializer,
 )
 
 
@@ -27,18 +30,34 @@ class ReportViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'destroy':
             return [IsAuthenticated(), IsOwnerOrAdmin()]
+        if self.action in ('update', 'partial_update'):
+            return [IsAuthenticated(), CanEditReport()]
         return [IsAuthenticated()]
 
     def get_serializer_class(self):
         if self.action in ('list', 'retrieve'):
             return ReportSerializer
-        return ReportWriteSerializer
+        if self.action == 'create':
+            return ReportCreateSerializer
+        if self.action in ('update', 'partial_update'):
+            return ReportUpdateSerializer
+        return ReportSerializer
 
     def get_queryset(self):
         return visible_reports(self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        report = serializer.save(created_by=self.request.user)
+        ActivityLog.objects.create(
+            report=report, actor=self.request.user, action='created', detail='Report created',
+        )
+
+    def perform_update(self, serializer):
+        serializer.save()
+        ActivityLog.objects.create(
+            report=serializer.instance, actor=self.request.user, action='edited',
+            detail='Report details updated',
+        )
 
     def perform_destroy(self, instance):
         # IsOwnerOrAdmin already confirmed the requester is the creator or
@@ -127,9 +146,41 @@ class ReportViewSet(viewsets.ModelViewSet):
             serializer = CommentSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             comment = serializer.save(report=report, author=request.user)
+            ActivityLog.objects.create(
+                report=report, actor=request.user, action='comment_added',
+                detail='Comment added',
+            )
             return Response(CommentSerializer(comment).data, status=201)
 
         return Response(CommentSerializer(report.comments.all(), many=True).data)
+
+    @action(
+        detail=True, methods=['patch', 'delete'],
+        url_path=r'comments/(?P<comment_id>[^/.]+)',
+    )
+    def comment_detail(self, request, pk=None, comment_id=None):
+        report = self.get_object()
+        comment = get_object_or_404(Comment, pk=comment_id, report=report)
+        user = request.user
+
+        if comment.author_id != user.id and user.role != 'admin':
+            raise PermissionDenied('You may only edit or delete your own comments.')
+
+        if request.method == 'DELETE':
+            comment.delete()
+            ActivityLog.objects.create(
+                report=report, actor=user, action='comment_deleted',
+                detail=f'Comment #{comment_id} deleted',
+            )
+            return Response(status=204)
+
+        serializer = CommentUpdateSerializer(comment, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        ActivityLog.objects.create(
+            report=report, actor=user, action='comment_edited', detail='Comment edited',
+        )
+        return Response(CommentSerializer(comment).data)
 
     @action(detail=True, methods=['get'], url_path='activity')
     def activity(self, request, pk=None):
