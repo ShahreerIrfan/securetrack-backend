@@ -109,6 +109,8 @@ class Command(BaseCommand):
 
         now = timezone.now()
         severities = [s for s, _ in Report.Severity.choices]
+        priorities = [p for p, _ in Report.Priority.choices]
+        categories = [c for c, _ in Report.Category.choices]
         created = 0
 
         for index in range(count):
@@ -137,6 +139,16 @@ class Command(BaseCommand):
                 ),
                 severity=random.choice(severities),
                 status=status,
+                priority=random.choice(priorities),
+                category=random.choice(categories),
+                # Some findings carry a deadline and some don't, and a few
+                # are deliberately in the past so the overdue styling has
+                # something to render.
+                due_date=(
+                    (created_at + timedelta(days=random.randint(-5, 21))).date()
+                    if random.random() < 0.7
+                    else None
+                ),
                 created_by=random.choice(reporters),
                 assigned_to=assignee,
             )
