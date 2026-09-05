@@ -45,8 +45,8 @@ class ReportSerializer(serializers.ModelSerializer):
         model = Report
         fields = (
             'id', 'title', 'description', 'severity', 'status', 'priority',
-            'category', 'due_date', 'created_by', 'assigned_to', 'comments',
-            'created_at', 'updated_at',
+            'category', 'vulnerability_type', 'due_date', 'created_by', 'assigned_to',
+            'comments', 'created_at', 'updated_at',
         )
         read_only_fields = ('id', 'created_by', 'created_at', 'updated_at')
 
@@ -59,7 +59,8 @@ class ReportCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
         fields = (
-            'id', 'title', 'description', 'severity', 'priority', 'category', 'due_date',
+            'id', 'title', 'description', 'severity', 'priority', 'category',
+            'vulnerability_type', 'due_date',
         )
         read_only_fields = ('id',)
 
@@ -68,6 +69,7 @@ class ReportUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
         fields = (
-            'id', 'title', 'description', 'severity', 'priority', 'category', 'due_date',
+            'id', 'title', 'description', 'severity', 'priority', 'category',
+            'vulnerability_type', 'due_date',
         )
         read_only_fields = ('id',)

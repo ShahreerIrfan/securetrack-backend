@@ -30,12 +30,32 @@ class Report(models.Model):
         SOCIAL_ENGINEERING = 'social_engineering', 'Social Engineering'
         OTHER = 'other', 'Other'
 
+    class VulnerabilityType(models.TextChoices):
+        SQL_INJECTION = 'sql_injection', 'SQL Injection'
+        XSS = 'xss', 'Cross-Site Scripting (XSS)'
+        CSRF = 'csrf', 'Cross-Site Request Forgery (CSRF)'
+        BROKEN_AUTH = 'broken_authentication', 'Broken Authentication'
+        DATA_EXPOSURE = 'data_exposure', 'Sensitive Data Exposure'
+        MISCONFIGURATION = 'misconfiguration', 'Security Misconfiguration'
+        INSECURE_API = 'insecure_api', 'Insecure API'
+        MALWARE = 'malware', 'Malware Infection'
+        RANSOMWARE = 'ransomware', 'Ransomware'
+        PHISHING = 'phishing', 'Phishing Attack'
+        DDOS = 'ddos', 'DDoS Attack'
+        MITM = 'mitm', 'Man-in-the-Middle Attack'
+        INSIDER_THREAT = 'insider_threat', 'Insider Threat'
+        ZERO_DAY = 'zero_day', 'Zero-Day Exploit'
+        OTHER = 'other', 'Other'
+
     title = models.CharField(max_length=255)
     description = models.TextField()
     severity = models.CharField(max_length=20, choices=Severity.choices, default=Severity.MEDIUM)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
     priority = models.CharField(max_length=20, choices=Priority.choices, default=Priority.MEDIUM)
     category = models.CharField(max_length=30, choices=Category.choices, default=Category.OTHER)
+    vulnerability_type = models.CharField(
+        max_length=30, choices=VulnerabilityType.choices, default=VulnerabilityType.OTHER,
+    )
     due_date = models.DateField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
