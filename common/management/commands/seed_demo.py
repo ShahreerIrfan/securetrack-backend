@@ -111,6 +111,7 @@ class Command(BaseCommand):
         severities = [s for s, _ in Report.Severity.choices]
         priorities = [p for p, _ in Report.Priority.choices]
         categories = [c for c, _ in Report.Category.choices]
+        vulnerability_types = [v for v, _ in Report.VulnerabilityType.choices]
         created = 0
 
         for index in range(count):
@@ -141,6 +142,7 @@ class Command(BaseCommand):
                 status=status,
                 priority=random.choice(priorities),
                 category=random.choice(categories),
+                vulnerability_type=random.choice(vulnerability_types),
                 # Some findings carry a deadline and some don't, and a few
                 # are deliberately in the past so the overdue styling has
                 # something to render.
