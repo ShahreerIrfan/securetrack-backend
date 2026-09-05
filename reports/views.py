@@ -47,7 +47,10 @@ class ReportViewSet(viewsets.ModelViewSet):
         return visible_reports(self.request.user)
 
     def perform_create(self, serializer):
-        report = serializer.save(created_by=self.request.user)
+        created_by = self.request.user
+        if self.request.user.role == 'admin' and 'created_by' in serializer.validated_data:
+            created_by = serializer.validated_data['created_by']
+        report = serializer.save(created_by=created_by)
         ActivityLog.objects.create(
             report=report, actor=self.request.user, action='created', detail='Report created',
         )

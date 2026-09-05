@@ -97,6 +97,40 @@ class ReportCreateTests(APITestCase):
         self.assertEqual(logs.first().action, 'created')
 
 
+class ReportCreateOnBehalfTests(APITestCase):
+    """Admins may file a report with someone else as created_by (e.g. a
+    support agent logging a finding a customer phoned in). Everyone else
+    gets it silently overridden - see the ReportCreateTests case above."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = make_user('admin@st.test', 'admin')
+        cls.customer = make_user('customer@st.test', 'user')
+
+    def setUp(self):
+        self.client.force_authenticate(self.admin)
+
+    def test_admin_can_set_created_by_to_another_user(self):
+        res = self.client.post(reverse('report-list'), {
+            'title': 'Phoned in finding', 'description': 'x', 'created_by': self.customer.id,
+        })
+        self.assertEqual(res.status_code, 201)
+        report = Report.objects.get(pk=res.data['id'])
+        self.assertEqual(report.created_by, self.customer)
+
+    def test_activity_log_still_attributes_the_admin_as_actor(self):
+        res = self.client.post(reverse('report-list'), {
+            'title': 'Phoned in finding', 'description': 'x', 'created_by': self.customer.id,
+        })
+        log = ActivityLog.objects.get(report_id=res.data['id'])
+        self.assertEqual(log.actor, self.admin)
+
+    def test_omitting_created_by_defaults_to_the_admin_themselves(self):
+        res = self.client.post(reverse('report-list'), {'title': 'My own finding', 'description': 'x'})
+        report = Report.objects.get(pk=res.data['id'])
+        self.assertEqual(report.created_by, self.admin)
+
+
 class ReportUpdateAuthorizationTests(APITestCase):
     """Regression coverage for the fix: PUT/PATCH /api/reports/{id}/ must
     never be able to change status or assigned_to, and only the creator

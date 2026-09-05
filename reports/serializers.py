@@ -56,11 +56,19 @@ class ReportSerializer(serializers.ModelSerializer):
 # role-gated set_status action - letting them through here would let any
 # authenticated user PATCH them directly and bypass that logic entirely.
 class ReportCreateSerializer(serializers.ModelSerializer):
+    # Optional, admin-only: lets an admin log a report on behalf of
+    # another user instead of themselves. Silently ignored for non-admins
+    # in ReportViewSet.perform_create, which always has the final say on
+    # created_by regardless of what's submitted here.
+    created_by = serializers.PrimaryKeyRelatedField(
+        queryset=CustomUser.objects.all(), required=False,
+    )
+
     class Meta:
         model = Report
         fields = (
             'id', 'title', 'description', 'severity', 'priority', 'category',
-            'vulnerability_type', 'due_date',
+            'vulnerability_type', 'due_date', 'created_by',
         )
         read_only_fields = ('id',)
 
