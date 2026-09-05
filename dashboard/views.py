@@ -51,10 +51,22 @@ class StatsView(APIView):
         for row in unordered.values('severity').annotate(count=Count('id')):
             by_severity[row['severity']] = row['count']
 
+        by_category = {choice: 0 for choice, _ in Report.Category.choices}
+        for row in unordered.values('category').annotate(count=Count('id')):
+            by_category[row['category']] = row['count']
+
+        by_vulnerability_type = {
+            choice: 0 for choice, _ in Report.VulnerabilityType.choices
+        }
+        for row in unordered.values('vulnerability_type').annotate(count=Count('id')):
+            by_vulnerability_type[row['vulnerability_type']] = row['count']
+
         data = {
             'total_reports': qs.count(),
             'by_status': by_status,
             'by_severity': by_severity,
+            'by_category': by_category,
+            'by_vulnerability_type': by_vulnerability_type,
         }
 
         if user.role == 'admin':
@@ -201,7 +213,11 @@ class WorkloadView(APIView):
 
 class ActivityFeedView(APIView):
     """System-wide audit trail across every report - the admin-side
-    counterpart to the per-report /api/reports/{id}/activity/ endpoint."""
+    counterpart to the per-report /api/reports/{id}/activity/ endpoint.
+
+    Returns a {count, results} envelope rather than a bare list so the
+    audit log page can paginate without a second count request.
+    """
 
     permission_classes = (IsAdminOrAnalyst,)
 
@@ -210,12 +226,59 @@ class ActivityFeedView(APIView):
     def get(self, request):
         try:
             limit = int(request.query_params.get('limit', 15))
+            offset = int(request.query_params.get('offset', 0))
         except ValueError:
-            return Response({'detail': '"limit" must be an integer.'}, status=400)
+            return Response(
+                {'detail': '"limit" and "offset" must be integers.'}, status=400,
+            )
         limit = max(1, min(limit, self.MAX_LIMIT))
+        offset = max(0, offset)
 
-        logs = (
-            ActivityLog.objects.select_related('actor', 'report')
-            .order_by('-created_at')[:limit]
+        logs = ActivityLog.objects.select_related('actor', 'report')
+
+        action = request.query_params.get('action')
+        if action:
+            logs = logs.filter(action=action)
+
+        actor = request.query_params.get('actor')
+        if actor:
+            try:
+                logs = logs.filter(actor_id=int(actor))
+            except ValueError:
+                return Response({'detail': '"actor" must be a user id.'}, status=400)
+
+        days = request.query_params.get('days')
+        if days:
+            try:
+                days_int = int(days)
+            except ValueError:
+                return Response({'detail': '"days" must be an integer.'}, status=400)
+            if days_int < 1:
+                return Response({'detail': '"days" must be at least 1.'}, status=400)
+            logs = logs.filter(created_at__gte=timezone.now() - timedelta(days=days_int))
+
+        search = request.query_params.get('search')
+        if search:
+            logs = logs.filter(
+                Q(detail__icontains=search) | Q(report__title__icontains=search),
+            )
+
+        total = logs.count()
+        page = logs.order_by('-created_at')[offset:offset + limit]
+        return Response({
+            'count': total,
+            'results': GlobalActivitySerializer(page, many=True).data,
+        })
+
+
+class ActivityActionsView(APIView):
+    """The distinct action values actually present in the log, so the audit
+    page's filter only ever offers options that would return rows."""
+
+    permission_classes = (IsAdminOrAnalyst,)
+
+    def get(self, request):
+        actions = (
+            ActivityLog.objects.order_by().values_list('action', flat=True).distinct()
         )
-        return Response(GlobalActivitySerializer(logs, many=True).data)
+        return Response(sorted(actions))

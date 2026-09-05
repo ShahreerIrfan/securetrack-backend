@@ -1,6 +1,9 @@
+import csv
+
 from accounts.models import CustomUser
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
@@ -9,6 +12,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from common.permissions import CanEditReport, IsOwnerOrAdmin
+from notifications.models import Notification
+from notifications.services import notify
 
 from .models import ActivityLog, Comment, Report
 from .queries import visible_reports
@@ -54,6 +59,15 @@ class ReportViewSet(viewsets.ModelViewSet):
         report = serializer.save(created_by=created_by)
         ActivityLog.objects.create(
             report=report, actor=self.request.user, action='created', detail='Report created',
+        )
+        # Only fires when an admin filed this on someone else's behalf -
+        # notify() drops the actor, so self-filed reports notify nobody.
+        notify(
+            recipients=[report.created_by],
+            actor=self.request.user,
+            report=report,
+            kind=Notification.Kind.REPORT_FILED,
+            message=f'A report was filed on your behalf: "{report.title}"',
         )
 
     def perform_update(self, serializer):
@@ -145,6 +159,23 @@ class ReportViewSet(viewsets.ModelViewSet):
             detail=f'Status changed from "{old_status}" to "{new_status}"{assignment_detail}',
         )
 
+        status_label = dict(Report.Status.choices)[new_status]
+        if assignment_detail:
+            notify(
+                recipients=[report.assigned_to],
+                actor=user,
+                report=report,
+                kind=Notification.Kind.ASSIGNED,
+                message=f'You were assigned: "{report.title}"',
+            )
+        notify(
+            recipients=[report.created_by],
+            actor=user,
+            report=report,
+            kind=Notification.Kind.STATUS_CHANGED,
+            message=f'"{report.title}" is now {status_label}',
+        )
+
         return Response(ReportSerializer(report).data)
 
     @action(detail=True, methods=['get', 'post'], url_path='comments')
@@ -158,6 +189,13 @@ class ReportViewSet(viewsets.ModelViewSet):
             ActivityLog.objects.create(
                 report=report, actor=request.user, action='comment_added',
                 detail='Comment added',
+            )
+            notify(
+                recipients=[report.created_by, report.assigned_to],
+                actor=request.user,
+                report=report,
+                kind=Notification.Kind.COMMENT,
+                message=f'New comment on "{report.title}"',
             )
             return Response(CommentSerializer(comment).data, status=201)
 
@@ -195,6 +233,43 @@ class ReportViewSet(viewsets.ModelViewSet):
     def activity(self, request, pk=None):
         report = self.get_object()
         return Response(ActivityLogSerializer(report.activity_logs.all(), many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='export')
+    def export(self, request):
+        """CSV of exactly what the caller can see, honouring the same
+        filters/search as the list endpoint - so "export" always matches
+        whatever the reports table is currently showing."""
+        queryset = self.filter_queryset(self.get_queryset()).select_related(
+            'created_by', 'assigned_to',
+        )
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = (
+            f'attachment; filename="securetrack-reports-{timezone.localdate()}.csv"'
+        )
+
+        writer = csv.writer(response)
+        writer.writerow([
+            'ID', 'Title', 'Status', 'Severity', 'Priority', 'Category',
+            'Vulnerability Type', 'Reported By', 'Assigned To', 'Due Date',
+            'Created At', 'Updated At',
+        ])
+        for report in queryset:
+            writer.writerow([
+                report.id,
+                report.title,
+                report.get_status_display(),
+                report.get_severity_display(),
+                report.get_priority_display(),
+                report.get_category_display(),
+                report.get_vulnerability_type_display(),
+                report.created_by.email,
+                report.assigned_to.email if report.assigned_to else '',
+                report.due_date or '',
+                report.created_at.isoformat(),
+                report.updated_at.isoformat(),
+            ])
+        return response
 
     @action(detail=True, methods=['get'], url_path='attachment')
     def attachment(self, request, pk=None):

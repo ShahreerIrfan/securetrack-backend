@@ -9,7 +9,12 @@ from rest_framework.views import APIView
 from common.permissions import IsAdmin
 
 from .models import CustomUser
-from .serializers import UserCreateSerializer, UserSerializer
+from .serializers import (
+    ChangePasswordSerializer,
+    MeUpdateSerializer,
+    UserCreateSerializer,
+    UserSerializer,
+)
 
 
 class RegisterView(APIView):
@@ -67,16 +72,45 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 class MeView(APIView):
-    """Returns the authenticated user's identity, resolved from their JWT."""
+    """The authenticated user's own identity, resolved from their JWT -
+    readable by anyone logged in, and editable for the few fields that
+    aren't privilege-bearing (name and email, never role/is_active)."""
 
     permission_classes = (IsAuthenticated,)
 
-    def get(self, request):
-        user = request.user
-        return Response({
+    @staticmethod
+    def _payload(user):
+        return {
             'id': user.id,
             'email': user.email,
             'first_name': user.first_name,
             'last_name': user.last_name,
             'role': user.role,
-        })
+        }
+
+    def get(self, request):
+        return Response(self._payload(request.user))
+
+    def patch(self, request):
+        serializer = MeUpdateSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(self._payload(request.user))
+
+
+class ChangePasswordView(APIView):
+    """Password change for the logged-in user. Separate from MeView so the
+    profile form can't accidentally submit a password field, and so the
+    current-password check lives in exactly one place."""
+
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(
+            data=request.data, context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        user = request.user
+        user.set_password(serializer.validated_data['new_password'])
+        user.save()
+        return Response({'detail': 'Password updated.'})

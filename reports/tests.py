@@ -136,6 +136,53 @@ class ReportCreateOnBehalfTests(APITestCase):
         self.assertEqual(report.created_by, self.admin)
 
 
+class ReportExportTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = make_user('exp-owner@st.test', 'user')
+        cls.stranger = make_user('exp-stranger@st.test', 'user')
+        cls.admin = make_user('exp-admin@st.test', 'admin')
+        Report.objects.create(
+            title='Mine', description='x', created_by=cls.owner,
+            severity='critical', status='new',
+        )
+        Report.objects.create(title='Theirs', description='x', created_by=cls.stranger)
+
+    def _rows(self, response):
+        text = response.content.decode()
+        return [line for line in text.splitlines() if line.strip()]
+
+    def test_export_returns_csv_with_a_header_row(self):
+        self.client.force_authenticate(self.admin)
+        res = self.client.get(reverse('report-export'))
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res['Content-Type'], 'text/csv')
+        self.assertIn('attachment; filename=', res['Content-Disposition'])
+
+        rows = self._rows(res)
+        self.assertTrue(rows[0].startswith('ID,Title,Status'))
+        self.assertEqual(len(rows), 3)  # header + 2 reports
+
+    def test_export_is_scoped_to_what_the_caller_can_see(self):
+        self.client.force_authenticate(self.owner)
+        rows = self._rows(self.client.get(reverse('report-export')))
+        self.assertEqual(len(rows), 2)  # header + only their own report
+        self.assertIn('Mine', rows[1])
+        self.assertNotIn('Theirs', ''.join(rows))
+
+    def test_export_honours_the_same_filters_as_the_list(self):
+        self.client.force_authenticate(self.admin)
+        rows = self._rows(
+            self.client.get(reverse('report-export'), {'severity': 'critical'}),
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertIn('Mine', rows[1])
+
+    def test_export_requires_authentication(self):
+        res = self.client.get(reverse('report-export'))
+        self.assertEqual(res.status_code, 401)
+
+
 class ReportAttachmentTests(APITestCase):
     @classmethod
     def setUpTestData(cls):

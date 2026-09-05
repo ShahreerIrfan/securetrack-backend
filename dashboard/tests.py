@@ -87,11 +87,63 @@ class DashboardEndpointTests(APITestCase):
 
     def test_activity_feed_carries_its_report_and_is_newest_first(self):
         self.client.force_authenticate(self.admin)
-        entries = self.client.get(reverse('dashboard-activity')).data
-        self.assertEqual(len(entries), 1)
+        body = self.client.get(reverse('dashboard-activity')).data
+        self.assertEqual(body['count'], 1)
+        entries = body['results']
         self.assertEqual(entries[0]['report_id'], self.done.id)
         self.assertEqual(entries[0]['report_title'], 'Resolved')
         self.assertEqual(entries[0]['actor']['role'], 'developer')
+
+    def test_activity_feed_filters_by_action_actor_and_search(self):
+        ActivityLog.objects.create(
+            report=self.assigned, actor=self.admin, action='comment_added',
+            detail='Comment added',
+        )
+        self.client.force_authenticate(self.admin)
+        url = reverse('dashboard-activity')
+
+        by_action = self.client.get(url, {'action': 'comment_added'}).data
+        self.assertEqual(by_action['count'], 1)
+        self.assertEqual(by_action['results'][0]['action'], 'comment_added')
+
+        by_actor = self.client.get(url, {'actor': self.dev.id}).data
+        self.assertEqual(by_actor['count'], 1)
+        self.assertEqual(by_actor['results'][0]['actor']['role'], 'developer')
+
+        by_search = self.client.get(url, {'search': 'Resolved'}).data
+        self.assertEqual(by_search['count'], 1)
+
+    def test_activity_feed_paginates_with_limit_and_offset(self):
+        for i in range(4):
+            ActivityLog.objects.create(
+                report=self.assigned, actor=self.admin, action='edited', detail=f'edit {i}',
+            )
+        self.client.force_authenticate(self.admin)
+        url = reverse('dashboard-activity')
+
+        first = self.client.get(url, {'limit': 2, 'offset': 0}).data
+        self.assertEqual(first['count'], 5)
+        self.assertEqual(len(first['results']), 2)
+
+        second = self.client.get(url, {'limit': 2, 'offset': 2}).data
+        self.assertEqual(len(second['results']), 2)
+        self.assertNotEqual(
+            [e['id'] for e in first['results']], [e['id'] for e in second['results']],
+        )
+
+    def test_activity_actions_lists_distinct_actions(self):
+        ActivityLog.objects.create(
+            report=self.assigned, actor=self.admin, action='comment_added', detail='x',
+        )
+        self.client.force_authenticate(self.admin)
+        res = self.client.get(reverse('dashboard-activity-actions'))
+        self.assertEqual(res.data, ['comment_added', 'status_changed'])
+
+    def test_stats_includes_category_and_vulnerability_breakdowns(self):
+        self.client.force_authenticate(self.admin)
+        data = self.client.get(reverse('dashboard-stats')).data
+        self.assertEqual(sum(data['by_category'].values()), 3)
+        self.assertEqual(sum(data['by_vulnerability_type'].values()), 3)
 
     def test_admin_only_endpoints_reject_lower_roles(self):
         for user in (self.analyst, self.dev, self.reporter):

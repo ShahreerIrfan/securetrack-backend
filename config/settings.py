@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'accounts',
     'reports',
     'dashboard',
+    'notifications',
     'common',
 ]
 
