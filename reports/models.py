@@ -1,5 +1,17 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 from django.db import models
+
+ALLOWED_ATTACHMENT_EXTENSIONS = [
+    'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'log', 'csv', 'zip', 'docx',
+]
+MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def validate_attachment_size(file):
+    if file.size > MAX_ATTACHMENT_SIZE_BYTES:
+        raise ValidationError('Attachment must be 10MB or smaller.')
 
 
 class Report(models.Model):
@@ -57,6 +69,15 @@ class Report(models.Model):
         max_length=30, choices=VulnerabilityType.choices, default=VulnerabilityType.OTHER,
     )
     due_date = models.DateField(null=True, blank=True)
+    attachment = models.FileField(
+        upload_to='report_attachments/%Y/%m/',
+        null=True,
+        blank=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=ALLOWED_ATTACHMENT_EXTENSIONS),
+            validate_attachment_size,
+        ],
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

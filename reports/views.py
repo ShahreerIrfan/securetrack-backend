@@ -1,4 +1,5 @@
 from accounts.models import CustomUser
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, viewsets
@@ -56,6 +57,11 @@ class ReportViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        # Multipart form data has no way to send "null" for a file field,
+        # so clearing an existing attachment (without replacing it) needs
+        # an explicit out-of-band flag instead.
+        if str(self.request.data.get('remove_attachment', '')).lower() in ('1', 'true'):
+            serializer.validated_data['attachment'] = None
         serializer.save()
         ActivityLog.objects.create(
             report=serializer.instance, actor=self.request.user, action='edited',
@@ -189,3 +195,14 @@ class ReportViewSet(viewsets.ModelViewSet):
     def activity(self, request, pk=None):
         report = self.get_object()
         return Response(ActivityLogSerializer(report.activity_logs.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='attachment')
+    def attachment(self, request, pk=None):
+        # get_object() applies get_queryset()'s visible_reports() scoping,
+        # so this inherits the exact same access rules as viewing the
+        # report itself - no separate permission logic to keep in sync.
+        report = self.get_object()
+        if not report.attachment:
+            raise Http404('This report has no attachment.')
+        filename = report.attachment.name.rsplit('/', 1)[-1]
+        return FileResponse(report.attachment.open('rb'), as_attachment=True, filename=filename)

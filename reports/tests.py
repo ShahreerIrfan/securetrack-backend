@@ -1,4 +1,9 @@
+import shutil
+import tempfile
+
 from accounts.models import CustomUser
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
@@ -129,6 +134,82 @@ class ReportCreateOnBehalfTests(APITestCase):
         res = self.client.post(reverse('report-list'), {'title': 'My own finding', 'description': 'x'})
         report = Report.objects.get(pk=res.data['id'])
         self.assertEqual(report.created_by, self.admin)
+
+
+class ReportAttachmentTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = make_user('att-owner@st.test', 'user')
+        cls.stranger = make_user('att-stranger@st.test', 'user')
+
+    def setUp(self):
+        # A fresh media dir per test, not just per class - Django's
+        # storage layer isn't transactional like the DB, so files written
+        # by one test would otherwise still be on disk for the next one,
+        # causing collision-renamed filenames that break exact-name
+        # assertions below.
+        media_root = tempfile.mkdtemp(prefix='securetrack-test-media-')
+        self.addCleanup(shutil.rmtree, media_root, ignore_errors=True)
+        override = override_settings(MEDIA_ROOT=media_root)
+        override.enable()
+        self.addCleanup(override.disable)
+
+    def _upload(self):
+        self.client.force_authenticate(self.owner)
+        file = SimpleUploadedFile('poc.txt', b'proof of concept', content_type='text/plain')
+        return self.client.post(reverse('report-list'), {
+            'title': 'With evidence', 'description': 'x', 'attachment': file,
+        }, format='multipart')
+
+    def test_upload_on_create_and_attachment_name_round_trips(self):
+        res = self._upload()
+        self.assertEqual(res.status_code, 201)
+
+        report = Report.objects.get(pk=res.data['id'])
+        self.assertTrue(report.attachment.name.endswith('poc.txt'))
+
+        # attachment_name is SerializerMethodField only on the read
+        # serializer (list/retrieve) - the create response uses the write
+        # serializer, which never has it.
+        detail = self.client.get(reverse('report-detail', args=[report.pk]))
+        self.assertEqual(detail.data['attachment_name'], 'poc.txt')
+
+    def test_rejects_disallowed_extension(self):
+        self.client.force_authenticate(self.owner)
+        file = SimpleUploadedFile('payload.exe', b'MZ', content_type='application/octet-stream')
+        res = self.client.post(reverse('report-list'), {
+            'title': 'Bad file', 'description': 'x', 'attachment': file,
+        }, format='multipart')
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('attachment', res.data)
+
+    def test_owner_can_download_own_attachment(self):
+        res = self._upload()
+        report_id = res.data['id']
+        download = self.client.get(reverse('report-attachment', args=[report_id]))
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(b''.join(download.streaming_content), b'proof of concept')
+
+    def test_stranger_cannot_download_someone_elses_attachment(self):
+        res = self._upload()
+        report_id = res.data['id']
+        self.client.force_authenticate(self.stranger)
+        download = self.client.get(reverse('report-attachment', args=[report_id]))
+        self.assertEqual(download.status_code, 404)
+
+    def test_remove_attachment_flag_clears_it_without_a_new_file(self):
+        res = self._upload()
+        report_id = res.data['id']
+        patch = self.client.patch(
+            reverse('report-detail', args=[report_id]),
+            {'title': 'With evidence', 'description': 'x', 'remove_attachment': 'true'},
+            format='multipart',
+        )
+        self.assertEqual(patch.status_code, 200)
+        self.assertFalse(Report.objects.get(pk=report_id).attachment)
+
+        detail = self.client.get(reverse('report-detail', args=[report_id]))
+        self.assertIsNone(detail.data['attachment_name'])
 
 
 class ReportUpdateAuthorizationTests(APITestCase):

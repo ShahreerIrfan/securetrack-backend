@@ -188,10 +188,26 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STORAGES = {
+    # Defining STORAGES at all replaces Django's built-in defaults
+    # entirely, not just the key(s) listed - omitting 'default' here left
+    # FileField with no storage backend configured at all, which only
+    # surfaced once something (report attachments) actually used one.
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
     'staticfiles': {
         'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
     },
 }
+
+# User-uploaded report attachments. Written to local disk inside the
+# container - fine for this app's scale, but note that a Dokploy
+# redeploy replaces the container filesystem, so this directory needs a
+# persistent volume mounted at MEDIA_ROOT in production or attachments
+# won't survive a redeploy. Swapping to S3-compatible storage later only
+# means changing STORAGES['default'], not any application code.
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 
 # Email

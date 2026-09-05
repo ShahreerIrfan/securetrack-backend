@@ -40,15 +40,23 @@ class ReportSerializer(serializers.ModelSerializer):
     created_by = NestedUserSerializer(read_only=True)
     assigned_to = NestedUserSerializer(read_only=True)
     comments = CommentSerializer(many=True, read_only=True)
+    # Deliberately not exposing the raw file field/URL - attachments can be
+    # sensitive, so they're only ever fetched through the authenticated,
+    # permission-scoped `attachment` action. This is just enough for the
+    # UI to know one exists and show its filename.
+    attachment_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Report
         fields = (
             'id', 'title', 'description', 'severity', 'status', 'priority',
-            'category', 'vulnerability_type', 'due_date', 'created_by', 'assigned_to',
-            'comments', 'created_at', 'updated_at',
+            'category', 'vulnerability_type', 'due_date', 'attachment_name',
+            'created_by', 'assigned_to', 'comments', 'created_at', 'updated_at',
         )
         read_only_fields = ('id', 'created_by', 'created_at', 'updated_at')
+
+    def get_attachment_name(self, obj):
+        return obj.attachment.name.rsplit('/', 1)[-1] if obj.attachment else None
 
 
 # Deliberately exclude "status" and "assigned_to" from both write
@@ -64,11 +72,16 @@ class ReportCreateSerializer(serializers.ModelSerializer):
         queryset=CustomUser.objects.all(), required=False,
     )
 
+    # Not declared explicitly - the model field's blank=True/null=True
+    # already make ModelSerializer auto-generate this as optional, and
+    # crucially, auto-generation is also what copies the model field's
+    # validators (extension whitelist, size cap) onto the serializer
+    # field. Declaring it by hand here would silently drop them.
     class Meta:
         model = Report
         fields = (
             'id', 'title', 'description', 'severity', 'priority', 'category',
-            'vulnerability_type', 'due_date', 'created_by',
+            'vulnerability_type', 'due_date', 'created_by', 'attachment',
         )
         read_only_fields = ('id',)
 
@@ -78,6 +91,6 @@ class ReportUpdateSerializer(serializers.ModelSerializer):
         model = Report
         fields = (
             'id', 'title', 'description', 'severity', 'priority', 'category',
-            'vulnerability_type', 'due_date',
+            'vulnerability_type', 'due_date', 'attachment',
         )
         read_only_fields = ('id',)
