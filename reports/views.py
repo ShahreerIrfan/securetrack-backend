@@ -24,7 +24,7 @@ from .serializers import (
 class ReportViewSet(viewsets.ModelViewSet):
     permission_classes = (IsAuthenticated,)
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
-    filterset_fields = ('severity', 'status', 'assigned_to')
+    filterset_fields = ('severity', 'status', 'priority', 'category', 'vulnerability_type', 'assigned_to')
     search_fields = ('title', 'description')
 
     def get_permissions(self):
