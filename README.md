@@ -47,18 +47,37 @@ u.save()
 
 ## Environment variables
 
-None are required for local development. `SECRET_KEY`, `DEBUG`, and CORS
-origins are all hardcoded in `config/settings.py` for local SQLite dev.
-Deploying anywhere beyond localhost means moving at least these out of
-source and into real environment variables first:
+None are required for local development - every setting below falls back
+to a value that works against local SQLite with `DEBUG=True`. See
+`.env.example` for the full list with descriptions.
 
-| Setting | Currently | Needs to become |
+| Variable | Local default | Set in production to |
 |---|---|---|
-| `SECRET_KEY` | hardcoded dev value | a real secret from the environment |
-| `DEBUG` | `True` | `False` in production |
-| `ALLOWED_HOSTS` | `['localhost', '127.0.0.1']` | your actual domain(s) |
-| `CORS_ALLOWED_ORIGINS` | `['http://localhost:3000']` | your deployed frontend's origin |
-| `DATABASES` | SQLite file | a real database (e.g. Postgres via `DATABASE_URL`) |
+| `DJANGO_SECRET_KEY` | insecure dev key | a real secret (`get_random_secret_key()`) |
+| `DJANGO_DEBUG` | `True` | `False` |
+| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | your API's domain(s) |
+| `DATABASE_URL` | unset (uses SQLite) | your Postgres connection string |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | your deployed frontend's origin(s) |
+| `CSRF_TRUSTED_ORIGINS` | unset | same as above, only needed for Django admin |
+
+## Deployment (Docker / Dokploy)
+
+The repo ships a production `Dockerfile` + `entrypoint.sh`: on container
+start it runs migrations, collects static files, then serves via
+gunicorn. In Dokploy:
+
+1. Create the app as a **Dockerfile**-type deployment pointing at this repo.
+2. Add a Postgres database (Dokploy can provision one) and copy its
+   connection string into `DATABASE_URL`.
+3. Set the other environment variables from the table above -
+   `DJANGO_ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS` must match the real
+   domains you deploy to, or the frontend won't be able to reach the API
+   and Django will reject the Host header.
+4. `GET /healthz/` returns `{"status": "ok"}` - point Dokploy's health
+   check at it.
+
+No build-time secrets are needed - migrations and `collectstatic` both
+run at container start, once real env vars are available.
 
 ## API surface
 
