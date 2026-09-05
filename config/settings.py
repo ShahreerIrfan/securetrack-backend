@@ -71,20 +71,25 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-CORS_ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
-    if origin.strip()
-]
+# Both settings below hard-require a scheme (http:// or https://) on every
+# entry - Django's system checks reject any that lack one, and those
+# checks run on every management command including `migrate`, so a bare
+# domain here would crash the container before it ever starts serving
+# (indistinguishable from the outside from a generic "Bad Gateway").
+# Silently dropping malformed entries trades a confusing crash-loop for a
+# working server that's simply missing one origin - filed as a config
+# mistake to fix, not a reason to take the whole app down.
+def _valid_origins(env_var, default=''):
+    origins = os.environ.get(env_var, default).split(',')
+    return [o for o in (origin.strip() for origin in origins) if o.startswith(('http://', 'https://'))]
+
+
+CORS_ALLOWED_ORIGINS = _valid_origins('CORS_ALLOWED_ORIGINS', 'http://localhost:3000')
 
 # Only needed for Django admin's session-cookie login over HTTPS behind a
 # reverse proxy (Traefik/Dokploy) - the JWT-authenticated API itself is
 # stateless and unaffected by CSRF.
-CSRF_TRUSTED_ORIGINS = [
-    origin.strip()
-    for origin in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',')
-    if origin.strip()
-]
+CSRF_TRUSTED_ORIGINS = _valid_origins('CSRF_TRUSTED_ORIGINS')
 
 # Dokploy/Traefik terminates TLS and forwards plain HTTP, so Django must be
 # told to trust the X-Forwarded-Proto header instead of checking the
