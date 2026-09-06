@@ -279,5 +279,24 @@ class ReportViewSet(viewsets.ModelViewSet):
         report = self.get_object()
         if not report.attachment:
             raise Http404('This report has no attachment.')
+
         filename = report.attachment.name.rsplit('/', 1)[-1]
-        return FileResponse(report.attachment.open('rb'), as_attachment=True, filename=filename)
+        try:
+            handle = report.attachment.open('rb')
+        except FileNotFoundError:
+            # The row still points at a file the storage backend no longer
+            # has - typically because MEDIA_ROOT isn't on a persistent
+            # volume, so a container redeploy wiped it. Say so plainly
+            # instead of surfacing an unexplained 500.
+            return Response(
+                {'detail': (
+                    'The attached file is no longer available on the server. '
+                    'It may have been removed when the service was redeployed.'
+                )},
+                status=410,
+            )
+
+        # inline lets the browser render it in a preview pane; the default
+        # still forces a download.
+        as_attachment = request.query_params.get('disposition') != 'inline'
+        return FileResponse(handle, as_attachment=as_attachment, filename=filename)

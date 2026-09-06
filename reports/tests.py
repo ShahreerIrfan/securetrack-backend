@@ -1,3 +1,4 @@
+import os
 import shutil
 import tempfile
 
@@ -243,6 +244,30 @@ class ReportAttachmentTests(APITestCase):
         self.client.force_authenticate(self.stranger)
         download = self.client.get(reverse('report-attachment', args=[report_id]))
         self.assertEqual(download.status_code, 404)
+
+    def test_missing_file_on_disk_returns_410_not_500(self):
+        """A redeploy without a persistent volume leaves the row pointing
+        at a file that's gone - that has to explain itself, not 500."""
+        res = self._upload()
+        report = Report.objects.get(pk=res.data['id'])
+        os.remove(report.attachment.path)
+
+        download = self.client.get(reverse('report-attachment', args=[report.pk]))
+        self.assertEqual(download.status_code, 410)
+        self.assertIn('no longer available', download.data['detail'])
+
+    def test_inline_disposition_serves_for_preview_instead_of_download(self):
+        res = self._upload()
+        report_id = res.data['id']
+
+        default = self.client.get(reverse('report-attachment', args=[report_id]))
+        self.assertTrue(default['Content-Disposition'].startswith('attachment'))
+
+        inline = self.client.get(
+            reverse('report-attachment', args=[report_id]), {'disposition': 'inline'},
+        )
+        self.assertTrue(inline['Content-Disposition'].startswith('inline'))
+        self.assertEqual(b''.join(inline.streaming_content), b'proof of concept')
 
     def test_remove_attachment_flag_clears_it_without_a_new_file(self):
         res = self._upload()
